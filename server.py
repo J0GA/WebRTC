@@ -41,7 +41,4 @@ app.router.add_get("/ws", websocket_handler)
 app.router.add_static("/static", "web")
 
 if __name__ == "__main__":
-    print("Сервер запускается на http://localhost:5000")
-    print("Закройте это окно для остановки сервера")
     web.run_app(app, host="0.0.0.0", port=5000)
-    input("Нажмите Enter для выхода...")
