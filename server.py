@@ -1,7 +1,29 @@
+import sys
+import subprocess
+from pathlib import Path
 from aiohttp import web
 import aiohttp_jinja2
 import jinja2
-from pathlib import Path
+
+def install_dependencies():
+    try:
+        import aiohttp
+        import aiohttp_jinja2
+        import jinja2
+    except ImportError:
+        print("Устанавливаем необходимые зависимости...")
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", "requirements.txt"])
+        print("Зависимости успешно установлены!")
+
+# Проверяем и устанавливаем зависимости перед запуском
+install_dependencies()
+
+app = web.Application()
+
+# Остальной код сервера остается без изменений...
+Path("web/static").mkdir(parents=True, exist_ok=True)
+aiohttp_jinja2.setup(app, loader=jinja2.FileSystemLoader("web"))
+connected_peers = set()
 
 app = web.Application()
 
