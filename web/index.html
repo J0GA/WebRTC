@@ -1,10 +1,284 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8">
-  <title>$Title$</title>
+    <title>WebRTC Video Chat</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .video-container {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        video {
+        width: 300px;
+        height: 225px;
+        background: #000;
+        border-radius: 8px;
+        object-fit: cover;
+    }
+    #localVideo {
+
+    }
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        button {
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+        #startButton {
+            background: #4CAF50;
+            color: white;
+        }
+        #startButton.ended {
+            background: #f44336;
+        }
+        #videoButton {
+            background: #2196F3;
+            color: white;
+        }
+        #audioButton {
+            background: #ff9800;
+            color: white;
+        }
+        .status {
+            margin-top: 20px;
+            padding: 10px;
+            background: #f1f1f1;
+            border-radius: 4px;
+        }
+    </style>
 </head>
 <body>
-$END$
+    <h1>WebRTC Video Chat</h1>
+
+    <div class="video-container">
+        <div>
+            <h3>Ваша Камера</h3>
+            <video id="localVideo" autoplay muted></video>
+        </div>
+        <div>
+            <h3>Камера собеседника</h3>
+            <video id="remoteVideo" autoplay></video>
+        </div>
+    </div>
+
+    <div class="controls">
+        <button id="startButton">Начать звонок</button>
+        <button id="videoButton">Выключить видео</button>
+        <button id="audioButton">Выключить микрофон</button>
+    </div>
+
+    <div class="status" id="statusText">Статус: В полной готовности</div>
+
+    <script>
+        // Elements
+        const localVideo = document.getElementById('localVideo');
+        const remoteVideo = document.getElementById('remoteVideo');
+        const startButton = document.getElementById('startButton');
+        const videoButton = document.getElementById('videoButton');
+        const audioButton = document.getElementById('audioButton');
+        const statusText = document.getElementById('statusText');
+
+        // State
+        let peerConnection;
+        let localStream;
+        let isVideoEnabled = true;
+        let isAudioEnabled = true;
+        let isCallActive = false;
+        const socket = new WebSocket('ws://' + window.location.host + '/ws');
+
+        // Initialize
+        async function init() {
+            try {
+                localStream = await navigator.mediaDevices.getUserMedia({
+                    video: true,
+                    audio: true
+                });
+                localVideo.srcObject = localStream;
+                updateStatus();
+            } catch (err) {
+                console.error("Failed to get media", err);
+                statusText.textContent = "Error: " + err.message;
+            }
+        }
+
+        // Update UI status
+        function updateStatus() {
+            const status = [];
+            if (!isVideoEnabled) status.push("Ваша камера выключена");
+            if (!isAudioEnabled) status.push("Микрофон выключен");
+
+            statusText.textContent = status.length ?
+                "Статус: " + status.join(", ") :
+                "Статус: " + (isCallActive ? "Звонок начат" : "В полной готовности");
+        }
+
+        // Create peer connection
+        function createPeerConnection() {
+            peerConnection = new RTCPeerConnection({
+                iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+            });
+
+            // Add local tracks
+            localStream.getTracks().forEach(track => {
+                peerConnection.addTrack(track, localStream);
+            });
+
+            // ICE candidates
+            peerConnection.onicecandidate = event => {
+                if (event.candidate) {
+                    socket.send(JSON.stringify({
+                        type: 'candidate',
+                        candidate: event.candidate
+                    }));
+                }
+            };
+
+            // Remote stream
+            peerConnection.ontrack = event => {
+                remoteVideo.srcObject = event.streams[0];
+            };
+
+            peerConnection.oniceconnectionstatechange = () => {
+                if (peerConnection.iceConnectionState === 'disconnected') {
+                    resetCall();
+                }
+            };
+        }
+
+        // Start call function
+        async function startCall() {
+            if (!peerConnection) {
+                createPeerConnection();
+            }
+
+            // Create offer
+            const offer = await peerConnection.createOffer();
+            await peerConnection.setLocalDescription(offer);
+
+            socket.send(JSON.stringify({
+                type: 'offer',
+                offer: peerConnection.localDescription
+            }));
+
+            isCallActive = true;
+            startButton.textContent = "Завершить звонок";
+            startButton.classList.add('ended');
+            statusText.textContent = "Статус: Вызов...";
+        }
+
+        // Reset call function
+        function resetCall() {
+            if (peerConnection) {
+                peerConnection.close();
+                peerConnection = null;
+            }
+
+            if (remoteVideo.srcObject) {
+                remoteVideo.srcObject.getTracks().forEach(track => track.stop());
+                remoteVideo.srcObject = null;
+            }
+
+            isCallActive = false;
+            startButton.textContent = "Начать звонок";
+            startButton.classList.remove('ended');
+            statusText.textContent = "Статус: В полной готовности";
+        }
+
+        // Button handlers
+        startButton.onclick = () => {
+            if (!isCallActive) {
+                startCall();
+            } else {
+                resetCall();
+                // Send hangup signal
+                socket.send(JSON.stringify({ type: 'hangup' }));
+            }
+        };
+
+        videoButton.onclick = () => {
+            if (localStream) {
+                const videoTracks = localStream.getVideoTracks();
+                if (videoTracks.length > 0) {
+                    isVideoEnabled = !isVideoEnabled;
+                    videoTracks[0].enabled = isVideoEnabled;
+                    videoButton.textContent = isVideoEnabled ?
+                        "Выключить видео" : "Включить видео";
+                    updateStatus();
+                }
+            }
+        };
+
+        audioButton.onclick = () => {
+            if (localStream) {
+                const audioTracks = localStream.getAudioTracks();
+                if (audioTracks.length > 0) {
+                    isAudioEnabled = !isAudioEnabled;
+                    audioTracks[0].enabled = isAudioEnabled;
+                    audioButton.textContent = isAudioEnabled ?
+                        "Выключить микрофон" : "Включить микрофон";
+                    updateStatus();
+                }
+            }
+        };
+
+        // WebSocket message handler
+        socket.onmessage = async event => {
+            const message = JSON.parse(event.data);
+
+            if (message.type === 'offer') {
+                if (!peerConnection) {
+                    createPeerConnection();
+                }
+                await peerConnection.setRemoteDescription(
+                    new RTCSessionDescription(message.offer)
+                );
+                const answer = await peerConnection.createAnswer();
+                await peerConnection.setLocalDescription(answer);
+                socket.send(JSON.stringify({
+                    type: 'answer',
+                    answer: answer
+                }));
+                isCallActive = true;
+                startButton.textContent = "Завершить звонок";
+                startButton.classList.add('ended');
+                statusText.textContent = "Статус: Соединено";
+            }
+            else if (message.type === 'answer') {
+                await peerConnection.setRemoteDescription(
+                    new RTCSessionDescription(message.answer)
+                );
+                isCallActive = true;
+                startButton.textContent = "Завершить звонок";
+                startButton.classList.add('ended');
+                statusText.textContent = "Статус: Соединено";
+            }
+            else if (message.type === 'candidate') {
+                if (peerConnection) {
+                    await peerConnection.addIceCandidate(
+                        new RTCIceCandidate(message.candidate)
+                    );
+                }
+            }
+            else if (message.type === 'hangup') {
+                resetCall();
+            }
+        };
+
+        // Initialize the app
+        init();
+    </script>
 </body>
 </html>
