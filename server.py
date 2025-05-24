@@ -20,7 +20,6 @@ install_dependencies()
 
 app = web.Application()
 
-# Остальной код сервера остается без изменений...
 Path("web/static").mkdir(parents=True, exist_ok=True)
 aiohttp_jinja2.setup(app, loader=jinja2.FileSystemLoader("web"))
 connected_peers = set()
@@ -30,7 +29,6 @@ app = web.Application()
 # Создаем необходимые папки
 Path("web/static").mkdir(parents=True, exist_ok=True)
 
-# Настраиваем шаблонизатор
 aiohttp_jinja2.setup(app, loader=jinja2.FileSystemLoader("web"))
 
 connected_peers = set()
