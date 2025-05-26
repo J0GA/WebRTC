@@ -58,6 +58,14 @@
             background: #f1f1f1;
             border-radius: 4px;
         }
+        button:disabled {
+            background: #cccccc !important;
+            cursor: not-allowed;
+        }
+        .error-status {
+            color: #f44336;
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>
@@ -99,6 +107,20 @@
         let isCallActive = false;
         const socket = new WebSocket('ws://' + window.location.host + '/ws');
 
+        // Function to disable all buttons
+        function disableButtons() {
+            startButton.disabled = true;
+            videoButton.disabled = true;
+            audioButton.disabled = true;
+        }
+
+        // Function to enable buttons based on current state
+        function enableButtons() {
+            startButton.disabled = false;
+            videoButton.disabled = !localStream;
+            audioButton.disabled = !localStream;
+        }
+
         // Initialize
         async function init() {
             try {
@@ -107,10 +129,13 @@
                     audio: true
                 });
                 localVideo.srcObject = localStream;
+                enableButtons();
                 updateStatus();
             } catch (err) {
                 console.error("Failed to get media", err);
                 statusText.textContent = "Error: " + err.message;
+                statusText.classList.add('error-status');
+                disableButtons();
             }
         }
 
@@ -194,7 +219,7 @@
             isCallActive = false;
             startButton.textContent = "Начать звонок";
             startButton.classList.remove('ended');
-            statusText.textContent = "Статус: В полной готовности";
+            updateStatus();
         }
 
         // Button handlers
@@ -275,6 +300,22 @@
             else if (message.type === 'hangup') {
                 resetCall();
             }
+        };
+
+        // Handle WebSocket errors
+        socket.onerror = (error) => {
+            console.error("WebSocket error:", error);
+            statusText.textContent = "Error: Connection error";
+            statusText.classList.add('error-status');
+            disableButtons();
+        };
+
+        // Handle WebSocket close
+        socket.onclose = () => {
+            console.log("WebSocket connection closed");
+            statusText.textContent = "Error: Connection closed";
+            statusText.classList.add('error-status');
+            disableButtons();
         };
 
         // Initialize the app
